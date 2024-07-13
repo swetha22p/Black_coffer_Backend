@@ -12,6 +12,9 @@ app.config['MONGO_URI'] = os.getenv('MONGO_URI')
 mongo = PyMongo(app)
 CORS(app)
 
+# Production-ready configuration
+app.config['DEBUG'] = False  # Disable debug mode
+
 @app.route('/api/filters', methods=['GET'])
 def get_filters():
     sectors = mongo.db.TopicData.distinct("sector")
@@ -20,9 +23,7 @@ def get_filters():
     topics = mongo.db.TopicData.distinct("topic")
     pests = mongo.db.TopicData.distinct("pestle")
     sources = mongo.db.TopicData.distinct("source")
-    # swots = mongo.db.TopicData.distinct("swot")
     countries = mongo.db.TopicData.distinct("country")
-    # cities = mongo.db.TopicData.distinct("city")
     
     # Filter out empty strings
     sectors = [sector for sector in sectors if sector]
@@ -31,9 +32,7 @@ def get_filters():
     topics = [topic for topic in topics if topic]
     pests = [pest for pest in pests if pest]
     sources = [source for source in sources if source]
-    # swots = [swot for swot in swots if swot]
     countries = [country for country in countries if country]
-    # cities = [city for city in cities if city]
     
     return jsonify({
         "sectors": sectors,
@@ -42,9 +41,7 @@ def get_filters():
         "topics": topics,
         "pests": pests,
         "sources": sources,
-        # "swots": swots,
         "countries": countries,
-        # "cities": cities
     })
 
 @app.route('/api/data', methods=['GET'])
@@ -55,9 +52,7 @@ def get_data():
     topic = request.args.get('topic')
     pestle = request.args.get('pestle')
     source = request.args.get('source')
-    swot = request.args.get('swot')
     country = request.args.get('country')
-    city = request.args.get('city')
     
     query = {}
     
@@ -73,12 +68,8 @@ def get_data():
         query['pestle'] = pestle
     if source:
         query['source'] = source
-    # if swot:
-    #     query['swot'] = swot
     if country:
         query['country'] = country
-    # if city:
-    #     query['city'] = city
     
     data = list(mongo.db.TopicData.find(query))
     
@@ -88,5 +79,30 @@ def get_data():
     
     return jsonify(data)
 
+# Use Gunicorn to serve the application
+# Example command: gunicorn -w 4 -b 0.0.0.0:5000 app:app
 if __name__ == '__main__':
-    app.run(debug=True)
+    bind_address = '0.0.0.0:5000'
+    workers = 4
+    print(f"Running on {bind_address} with {workers} workers...")
+    from gunicorn.app.base import BaseApplication
+
+    class StandaloneApplication(BaseApplication):
+        def __init__(self, app, options=None):
+            self.options = options or {}
+            self.application = app
+            super().__init__()
+
+        def load_config(self):
+            for key, value in self.options.items():
+                self.cfg.set(key, value)
+
+        def load(self):
+            return self.application
+
+    options = {
+        'bind': bind_address,
+        'workers': workers,
+    }
+
+    StandaloneApplication(app, options).run()
